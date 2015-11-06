@@ -1,0 +1,19 @@
+{
+    "env": {
+        "browser": true,
+        "node": true
+    },
+    "ecmaFeatures": {
+      "arrowFunctions": true,
+      "classes": true,
+      "defaultParams": true,
+      "forOf": true,
+      "generators": true,
+      "modules": true,
+      "superInFunctions": true,
+      "templateStrings": true
+    },
+    "rules": {
+        "strict": 0
+    }
+}

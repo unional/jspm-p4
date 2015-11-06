@@ -1,0 +1,28 @@
+{
+  "name": "jspm-p4",
+  "version": "0.1.0",
+  "description": "jspm perforce endpoint",
+  "main": "index.js",
+  "dependencies": {
+    "rsvp": "^3.1.0"
+  },
+  "devDependencies": {
+    "eslint": "^1.8.0"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/unional/jspm-p4.git"
+  },
+  "keywords": [
+    "jspm"
+  ],
+  "author": "unional",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/unional/jspm-p4/issues"
+  },
+  "homepage": "https://github.com/unional/jspm-p4#readme"
+}
