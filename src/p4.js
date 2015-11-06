@@ -3,6 +3,7 @@ var asp = require('rsvp').denodeify;
 var fs = require('graceful-fs');
 var exec = require('child_process').exec;
 var semver = require('semver');
+var semveRegex = require('semver-regex');
 var path = require('path');
 var rimraf = require('rimraf');
 // var P4rc = require('./p4rc.js');
@@ -20,6 +21,11 @@ function clone(a) {
   return b;
 }
 
+// Set default repo to the parent folder. Assuming default folder structure is simple flatten module as in npm@3+
+var defaultConfig = {
+    registryPath: "../.."
+};
+
 /**
 * Create a Perforce registry
 * @param {object} options Options from jspm (config?). Can contain any other registry-specific config.
@@ -29,15 +35,27 @@ function clone(a) {
 */
 var P4Registry = module.exports = function P4Registry(options, ui) {
     this.ui = ui;
-    this.registryPath = options.tmpDir;
-    this.registryUpdated = false;
-    this.repo = options.repo || defaultRepo;
+    this.options = options;
 
     this.execOptions = {
-      cwd: options.tmpDir,
       timeout: options.timeout * 1000,
       killSignal: 'SIGKILL'
     };
+};
+
+P4Registry.configure = function configure(config, ui) {
+    return Promise.resolve()
+    .then(function() {
+        return ui.input('p4 local registry path', config.registryPath || defaultConfig.registryPath);
+    })
+    .then(function(registryPath) {
+        if (registryPath != defaultConfig.registryPath) {
+            config.registryPath = registryPath;
+        }
+    })
+    .then(function () {
+        return config;
+    });
 };
 
 P4Registry.packageFormat = /^@[^\/]+\/[^\/]+|^[^@\/][^\/]+/;
@@ -67,23 +85,64 @@ P4Registry.prototype = {
     //     });
     // },
     lookup: function(packageName) {
-        var root = this.root;
-
-        if (repo.split('/').length !== 2) {
+        var root = path.resolve(this.options.registryPath || defaultConfig.registryPath);
+        var packagePath = path.resolve(root, packageName);
+        var latestKey = 'latest';
+        var me = this;
+        if (packageName.split('/').length !== 2) {
             throw new Error("Perforce packages must be organized in the form of `owner(team)/repo`.");
         }
 
-        return new Promise(function (resolve, reject) {
-            var stat = fs.statSync(root + "/" + packageName);
-            if (stat.isDirectory()) {
-                resolve()
+        return asp(fs.readFile)(path.resolve(this.options.tmpDir, packageName + '.json'))
+        .then(function(lookupJSON) {
+            lookupCache = JSON.parse(lookupJSON.toString());
+        })
+        .catch(function(e) {
+            if (e.code === 'ENOENT' || e instanceof SyntaxError) {
+                return;
             }
-            else {
-                resolve({ notfound: true});
-            }
+            throw e;
+        })
+        .then(function() {
+            // load labels from p4
+            // `p4 labels ...`
+            console.log('before');
+            return asp(exec)('p4 labels ...', me.execOptions)
+            .then(function(stdout, stderr) {
+                var versions = stdout.match(semverRegex());
+                console.log(versions);
+                if(stderr) {
+                    throw stderr;
+                }
+                return stdout;
+            })
+            .catch(function(err) {
+                console.log(err);
+                if (typeof err === 'string') {
+                    err = new Error(err);
+                    err.hideStack = true;
+                }
+                err.retriable = true;
+                throw err;
+            })
+            .then(function() {
+                return {
+                    versions: {
+                        '0.1.0': {
+                            hash: 'asdf'
+                        }
+                    },
+                    latest: '0.1.0'
+                };
+            });
+        })
+        .then(function(response) {
+            // todo save lookupCache
+            return response;
         });
     },
     download: function(packageName, version, hash, meta, dir) {
+
         return Promise.resolve({ notfound: true});
     }
     // parse: function parse(name) {
