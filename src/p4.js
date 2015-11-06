@@ -11,21 +11,20 @@ var rimraf = require('rimraf');
 // var P4rc = require('./p4rc.js');
 
 function clone(a) {
-  var b = {};
-  for (var p in a) {
-    if (a[p] instanceof Array)
-      b[p] = [].concat(a[p]);
-    else if (typeof a[p] == 'object')
-      b[p] = clone(a[p]);
-    else
-      b[p] = a[p];
-  }
-  return b;
+    var b = {};
+    for (var p in a) {
+        if (a[p] instanceof Array)
+        b[p] = [].concat(a[p]);
+        else if (typeof a[p] == 'object')
+        b[p] = clone(a[p]);
+        else
+        b[p] = a[p];
+    }
+    return b;
 }
 
-// Set default repo to the parent folder. Assuming default folder structure is simple flatten module as in npm@3+
 var defaultConfig = {
-    registryPath: "../.."
+    // registryPath: "../.."
 };
 
 /**
@@ -39,22 +38,23 @@ var P4Registry = module.exports = function P4Registry(options, ui) {
     this.ui = ui;
     this.options = options;
     this.execOptions = {
-      timeout: options.timeout * 1000,
-      killSignal: 'SIGKILL'
+        cwd: options.registryPath,
+        timeout: options.timeout * 1000,
+        killSignal: 'SIGKILL'
     };
 };
 
 P4Registry.configure = function configure(config, ui) {
     return Promise.resolve()
     .then(function() {
-        return ui.input('p4 local registry path', config.registryPath || defaultConfig.registryPath);
+        return ui.input('p4 local registry path', config.registryPath);
     })
     .then(function(registryPath) {
-        if (registryPath != defaultConfig.registryPath) {
-            config.registryPath = registryPath;
-        }
+        config.registryPath = registryPath;
+        return ui.input('p4 local registry client name (P4CLIENT)', config.workspace);
     })
-    .then(function () {
+    .then(function (workspace) {
+        config.workspace = workspace;
         return config;
     });
 };
@@ -62,39 +62,43 @@ P4Registry.configure = function configure(config, ui) {
 P4Registry.packageFormat = /^@[^\/]+\/[^\/]+|^[^@\/][^\/]+/;
 
 P4Registry.prototype = {
-    // /**
-    // * Given a package name, locate it and ensure it exists.
-    // * @param  {string} packageName Name of the package
-    // * @return {Promise}  Promise { notfound: true } | { redirect: 'new:package' } / undefined
-    // */
-    // locate: function(packageName) {
-    //     // packageName = 'owner/repo'
-    //     var root = this.root;
-    //
-    //     if (repo.split('/').length !== 2) {
-    //         throw new Error("Perforce packages must be organized in the form of `owner(team)/repo`.");
-    //     }
-    //
-    //     return new Promise(function(resolve, reject) {
-    //         var stat = fs.statSync(root + "/" + packageName);
-    //         if (stat.isDirectory()) {
-    //             resolve()
-    //         }
-    //         else {
-    //             resolve({ notfound: true});
-    //         }
-    //     });
-    // },
     lookup: function(packageName) {
-        var root = path.resolve(this.options.registryPath || defaultConfig.registryPath);
+        var root = path.resolve(this.options.registryPath);
         var packagePath = path.resolve(root, packageName);
         var latestKey = 'latest';
+        var p4set = true;
+        var existingWorkspace = '';
         var me = this;
-        if (packageName.split('/').length !== 2) {
-            throw new Error("Perforce packages must be organized in the form of `owner(team)/repo`.");
-        }
+        // if (packageName.split('/').length !== 1) {
+        //     throw new Error("Perforce packages currently only support flat repo (like npm@3+)");
+        // }
 
-        return asp(fs.readFile)(path.resolve(this.options.tmpDir, packageName + '.json'))
+        return Promise.resolve()
+        .then(function() {
+            return asp(exec)('p4 set P4CLIENT', me.execOptions)
+            .then(function(stdout, stderr) {
+                if (stderr) {
+                    throw stderr;
+                }
+
+
+                if (stdout) {
+                    // https://regex101.com/r/oD5jW3/1
+                    p4set = /( \(set\)$){0,1}/g.test(stdout);
+                    if (!p4set) {
+                        throw new Error('Currently do not support env/set of P4CLIENT.')
+                    }
+                    // https://regex101.com/r/zA1wJ9/1
+                    var matches = stdout.match(/=([^ ]*)/);
+
+                    console.log(stdout);
+                    existingWorkspace = matches[1];
+                }
+            });
+        })
+        .then(function() {
+            return asp(fs.readFile)(path.resolve(me.options.tmpDir, packageName + '.json'));
+        })
         .then(function(lookupJSON) {
             lookupCache = JSON.parse(lookupJSON.toString());
         })
@@ -105,8 +109,13 @@ P4Registry.prototype = {
             throw e;
         })
         .then(function() {
+            console.log(existingWorkspace, me.options.workspace);
+            if (existingWorkspace != me.options.workspace) {
+                return asp(exec)('p4 set P4CLIENT=' + me.options.workspace, me.execOptions);
+            }
+        })
+        .then(function() {
             // load labels from p4
-            // TODO need to setup p4 client. Get it from config.
             return asp(exec)('p4 labels ...', me.execOptions)
             .then(function(stdout, stderr) {
                 if(stderr) {
@@ -128,7 +137,6 @@ P4Registry.prototype = {
                 return { versions: versions };
             })
             .catch(function(err) {
-                console.log(err);
                 if (typeof err === 'string') {
                     err = new Error(err);
                     err.hideStack = true;
@@ -138,6 +146,13 @@ P4Registry.prototype = {
             });
         })
         .then(function(response) {
+            console.log('end', existingWorkspace, me.options.workspace);
+            if (existingWorkspace != me.options.workspace) {
+                return asp(exec)('p4 set P4CLIENT=' + existingWorkspace, me.execOptions).then(function() {
+                    return response;
+                });
+            }
+
             // todo save lookupCache
             return response;
         });
@@ -149,9 +164,6 @@ P4Registry.prototype = {
         return asp(exec)('p4 sync ' + packagePath + '@' + version, me.execOptions)
         .then(function() {
             return asp(ncp)(packagePath, dir, me.execOptions);
-        })
-        .then(function(){
-            // return asp(fs.readFile)(path.resolve(packagePath, 'package.json'));
         });
     }
     // parse: function parse(name) {
