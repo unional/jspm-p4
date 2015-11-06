@@ -1,9 +1,11 @@
 var Promise = require('rsvp').Promise;
 var asp = require('rsvp').denodeify;
+var crypto = require('crypto');
 var fs = require('graceful-fs');
+var ncp = require('ncp');
 var exec = require('child_process').exec;
 var semver = require('semver');
-var semveRegex = require('semver-regex');
+var semverRegex = require('semver-regex');
 var path = require('path');
 var rimraf = require('rimraf');
 // var P4rc = require('./p4rc.js');
@@ -36,7 +38,6 @@ var defaultConfig = {
 var P4Registry = module.exports = function P4Registry(options, ui) {
     this.ui = ui;
     this.options = options;
-
     this.execOptions = {
       timeout: options.timeout * 1000,
       killSignal: 'SIGKILL'
@@ -105,16 +106,26 @@ P4Registry.prototype = {
         })
         .then(function() {
             // load labels from p4
-            // `p4 labels ...`
-            console.log('before');
+            // TODO need to setup p4 client. Get it from config.
             return asp(exec)('p4 labels ...', me.execOptions)
             .then(function(stdout, stderr) {
-                var versions = stdout.match(semverRegex());
-                console.log(versions);
                 if(stderr) {
                     throw stderr;
                 }
-                return stdout;
+
+                var lines = stdout.split('\n');
+                var versions = {};
+                for (var i = 0, len = lines.length; i < len; i++) {
+                    var line = lines[i];
+                    var version = semverRegex().exec(line);
+                    if (version) {
+                        versions[version] = {
+                            hash: crypto.createHash('sha1').update(packageName + line).digest('hex')
+                        }
+                    }
+                }
+
+                return { versions: versions };
             })
             .catch(function(err) {
                 console.log(err);
@@ -124,16 +135,6 @@ P4Registry.prototype = {
                 }
                 err.retriable = true;
                 throw err;
-            })
-            .then(function() {
-                return {
-                    versions: {
-                        '0.1.0': {
-                            hash: 'asdf'
-                        }
-                    },
-                    latest: '0.1.0'
-                };
             });
         })
         .then(function(response) {
@@ -142,8 +143,16 @@ P4Registry.prototype = {
         });
     },
     download: function(packageName, version, hash, meta, dir) {
-
-        return Promise.resolve({ notfound: true});
+        var root = path.resolve(this.options.registryPath || defaultConfig.registryPath);
+        var packagePath = path.resolve(root, packageName);
+        var me = this;
+        return asp(exec)('p4 sync ' + packagePath + '@' + version, me.execOptions)
+        .then(function() {
+            return asp(ncp)(packagePath, dir, me.execOptions);
+        })
+        .then(function(){
+            // return asp(fs.readFile)(path.resolve(packagePath, 'package.json'));
+        });
     }
     // parse: function parse(name) {
     //     var parts = name.split('/');

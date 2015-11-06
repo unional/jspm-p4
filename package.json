@@ -1,9 +1,10 @@
 {
   "name": "jspm-p4",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "jspm perforce endpoint",
   "main": "index.js",
   "dependencies": {
+    "ncp": "^2.0.0",
     "rsvp": "^3.1.0",
     "semver-regex": "^1.0.0"
   },
