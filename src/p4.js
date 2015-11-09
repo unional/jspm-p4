@@ -8,7 +8,10 @@ var semver = require('semver');
 var semverRegex = require('semver-regex');
 var path = require('path');
 var rimraf = require('rimraf');
+var nodeConversion = require('./node-conversion.js');
 // var P4rc = require('./p4rc.js');
+
+var isWindows = process.platform.match(/^win/);
 
 function clone(a) {
     var b = {};
@@ -67,40 +70,22 @@ P4Registry.prototype = {
         var packagePath = path.resolve(root, packageName);
         var latestKey = 'latest';
         var p4set = true;
-        var existingWorkspace = '';
         var me = this;
         // if (packageName.split('/').length !== 1) {
         //     throw new Error("Perforce packages currently only support flat repo (like npm@3+)");
         // }
 
         return Promise.resolve()
+        .then(me._saveExistingWorkspace.bind(me))
         .then(function() {
-            return asp(exec)('p4 set P4CLIENT', me.execOptions)
-            .then(function(stdout, stderr) {
-                if (stderr) {
-                    throw stderr;
-                }
-
-
-                if (stdout) {
-                    // https://regex101.com/r/oD5jW3/1
-                    p4set = /( \(set\)$){0,1}/g.test(stdout);
-                    if (!p4set) {
-                        throw new Error('Currently do not support env/set of P4CLIENT.')
-                    }
-                    // https://regex101.com/r/zA1wJ9/1
-                    var matches = stdout.match(/=([^ ]*)/);
-
-                    console.log(stdout);
-                    existingWorkspace = matches[1];
-                }
-            });
-        })
-        .then(function() {
-            return asp(fs.readFile)(path.resolve(me.options.tmpDir, packageName + '.json'));
+            var cachePath = path.resolve(me.options.tmpDir, packageName + '.json')
+            // console.log(cachePath);
+            return asp(fs.readFile)(cachePath);
         })
         .then(function(lookupJSON) {
+            // console.log(lookupJSON);
             lookupCache = JSON.parse(lookupJSON.toString());
+            // console.log(lookupCache);
         })
         .catch(function(e) {
             if (e.code === 'ENOENT' || e instanceof SyntaxError) {
@@ -108,13 +93,9 @@ P4Registry.prototype = {
             }
             throw e;
         })
+        .then(me._overrideWorkspace.bind(me))
         .then(function() {
-            console.log(existingWorkspace, me.options.workspace);
-            if (existingWorkspace != me.options.workspace) {
-                return asp(exec)('p4 set P4CLIENT=' + me.options.workspace, me.execOptions);
-            }
-        })
-        .then(function() {
+            // console.log('before p4 labels');
             // load labels from p4
             return asp(exec)('p4 labels ...', me.execOptions)
             .then(function(stdout, stderr) {
@@ -146,25 +127,77 @@ P4Registry.prototype = {
             });
         })
         .then(function(response) {
-            console.log('end', existingWorkspace, me.options.workspace);
-            if (existingWorkspace != me.options.workspace) {
-                return asp(exec)('p4 set P4CLIENT=' + existingWorkspace, me.execOptions).then(function() {
-                    return response;
-                });
-            }
-
-            // todo save lookupCache
-            return response;
+            return me._restoreWorkspace().then(function() {
+                // todo save lookupCache
+                return response;
+            });
         });
     },
     download: function(packageName, version, hash, meta, dir) {
-        var root = path.resolve(this.options.registryPath || defaultConfig.registryPath);
+        // console.log('start download');
+        var root = path.resolve(this.options.registryPath);
         var packagePath = path.resolve(root, packageName);
         var me = this;
-        return asp(exec)('p4 sync ' + packagePath + '@' + version, me.execOptions)
+        return me._saveExistingWorkspace()
+        .then(me._overrideWorkspace.bind(me))
         .then(function() {
-            return asp(ncp)(packagePath, dir, me.execOptions);
+            // sync root to get new modules.
+            return asp(exec)('p4 sync ' + root + "/...", me.execOptions)
+            .then(function() {
+                return asp(exec)('p4 sync ' + packagePath + '@' + version, me.execOptions)
+                .then(function() {
+                    return asp(exec)(isWindows? 'attrib -R /S ' + packagePath: 'chmod -R +w .')
+                    .then(function() {
+                        return asp(ncp)(packagePath, dir, me.execOptions);
+                    });
+                });
+            });
+        })
+        .then(me._restoreWorkspace.bind(me))
+        .then(function() {
+            var filepath = path.resolve(packagePath, 'package.json');
+            // console.log(filepath);
+            return asp(fs.readFile)(filepath).
+            then(function(pjson) {
+                pjson = JSON.parse(pjson.toString());
+                // console.log(pjson);
+                return pjson;
+            })
         });
+    },
+    _saveExistingWorkspace: function() {
+        var me = this;
+        return asp(exec)('p4 set P4CLIENT', this.execOptions)
+        .then(function(stdout, stderr) {
+            if (stderr) {
+                throw stderr;
+            }
+
+            // https://regex101.com/r/oD5jW3/1
+            p4set = /( \(set\)$){0,1}/g.test(stdout);
+            if (!p4set) {
+                throw new Error('Currently do not support env/set of P4CLIENT.')
+            }
+            // https://regex101.com/r/zA1wJ9/1
+            var matches = stdout.match(/=([^ ]*)/);
+
+            // console.log(stdout);
+            me.existingWorkspace = matches[1];
+        });
+    },
+    _overrideWorkspace: function() {
+        // console.log('override', this.existingWorkspace, this.options.workspace);
+        if (this.existingWorkspace != this.options.workspace) {
+            return asp(exec)('p4 set P4CLIENT=' + this.options.workspace, this.execOptions);
+        }
+    },
+    _restoreWorkspace: function() {
+        if (this.existingWorkspace != this.options.workspace) {
+            return asp(exec)('p4 set P4CLIENT=' + this.existingWorkspace, this.execOptions)
+        }
+        else {
+            return Promise.resolve();
+        }
     }
     // parse: function parse(name) {
     //     var parts = name.split('/');
