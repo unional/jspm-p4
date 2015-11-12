@@ -8,7 +8,7 @@ jspm registry endpoint for Perforce.
 
 # Usage
 
-Create a workspace (P4CLIENT) that points to the root of your repository. For example you have `//depot/jspm-repo` that serves as the root of your repository, then you create a workspace such as `//depot/jspm-repo/... //yourworkspace/...` and point it to `/home/you/jspm-registory`.
+Create a workspace (P4CLIENT) that points to the root of your repository. For example you have `//depot/jspm-repo` that serves as the root of your repository, then you create a workspace such as `//depot/jspm-repo/... //yourworkspace/...` and point it to `/home/you/jspm-registory` (it doesn't need to name as `jspm-registory`, any name would be fine).
 
 While you don't have to do a `p4 sync` on the registory, you do need to at least `mkdir jspm-registory` for p4 to work correctly.
 
