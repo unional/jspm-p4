@@ -13,7 +13,6 @@ Create a workspace (P4CLIENT) that points to the root of your repository, then:
 ````
 npm install jspm-p4
 jspm registry create {myEndpoint} jspm-p4
-jspm registry config {myEndpoint}
 ````
 
 `jspm-p4` relies on `p4 labels` to manage versions. Similar to what you need to do on git/GitHub, when you have a module that is ready to publish, do the following:
