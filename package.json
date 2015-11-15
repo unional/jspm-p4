@@ -2,7 +2,7 @@
   "name": "jspm-p4",
   "version": "0.2.2",
   "description": "jspm perforce endpoint",
-  "main": "index.js",
+  "main": "./index.js",
   "dependencies": {
     "graceful-fs": "^4.1.2",
     "ncp": "^2.0.0",
