@@ -22,7 +22,8 @@ jspm registry create {myEndpoint} jspm-p4
 `jspm-p4` relies on `p4 labels` to manage versions. Similar to what you need to do on git/GitHub, when you have a module that is ready to publish, do the following:
 
 1. Update version in `package.json` (this doesn't have real effect, but it is a good practice to keep it consistent with your `label`).
-2. Tag the specific `revision/changelist` with a `label` that follows the `semver` convention (create the label if needed).
+2. Tag the `folder` on specific `revision/changelist` with a `label` that follows the `semver` convention (create the label if needed).
+	1. Do not tag on the `revision/changelist`, you will get only the modified files.
 
 To avoid unexpected behavior (*mess ups*), do not submit changes from multiple modules in the same revision. Check them in separately. That's the right thing to do anyway.
 
