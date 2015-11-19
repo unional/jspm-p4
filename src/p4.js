@@ -2,6 +2,7 @@ var crypto = require('crypto');
 var path = require('path');
 var exec = require('child_process').exec;
 
+var del = require('del');
 var Promise = require('rsvp').Promise;
 var asp = require('rsvp').denodeify;
 var fs = require('graceful-fs');
@@ -57,6 +58,7 @@ P4Registry.prototype = {
         var root = path.resolve(this.options.registryPath);
         var packagePath = path.resolve(root, packageName);
         var p4PackagePath = path.resolve(packagePath, '...');
+        
         return execp(p4cmd + me.options.workspace + ' labels ' + p4PackagePath, me.execOptions)
             .then(function (stdout, stderr) {
                 if (stderr) {
@@ -91,12 +93,8 @@ P4Registry.prototype = {
         var me = this;
         var root = path.resolve(this.options.registryPath);
         var packagePath = path.resolve(root, packageName);
-        var p4PackagePath = path.resolve(packagePath, '...');
 
-        return execp(p4cmd + me.options.workspace + ' sync -f ' + p4PackagePath + '@' + version, me.execOptions)
-            .then(function () {
-                return ncpp(packagePath, dir, me.execOptions);
-            })
+        return ncpp(packagePath, dir, me.execOptions)
             .then(function () {
                 return execp(isWindows ? 'attrib -R /S ' + dir + '\\*' : 'chmod -R +w ' + dir + '/*');
             })
@@ -119,6 +117,14 @@ P4Registry.prototype = {
         var packagePath = path.resolve(root, packageName);
         var p4PackagePath = path.resolve(packagePath, '...');
 
+        // Delete the package to avoid p4 unlink/chmod error during `sync -f` if the client has files that server don't. Messages are:
+        // * unlink: {filePath}: The system cannot find the file specified.
+        // * Fatal client error: disconnecting!
+        // * chmod {filePath}: The system cannot find the file specified.
+        //
+        // Experience this myself once.
+        // Only do it here and not on `download` as it would cause download twice.
+        del.sync([packagePath], { force: true });
         return execp(p4cmd + me.options.workspace + ' sync -f ' + p4PackagePath + '@' + version, me.execOptions)
             .then(function () {
                 var filepath = path.resolve(packagePath, 'package.json');

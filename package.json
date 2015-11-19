@@ -4,6 +4,7 @@
   "description": "jspm perforce endpoint",
   "main": "./index.js",
   "dependencies": {
+    "del": "^2.1.0",
     "graceful-fs": "^4.1.2",
     "ncp": "^2.0.0",
     "rsvp": "^3.1.0",
