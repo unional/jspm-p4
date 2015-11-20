@@ -1,1 +1,1 @@
-module.exports = require('./src/p4.js');
+module.exports = require('./src/jspm-p4.js');
