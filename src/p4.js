@@ -3,8 +3,7 @@ var path = require('path');
 var exec = require('child_process').exec;
 
 var del = require('del');
-var Promise = require('rsvp').Promise;
-var asp = require('rsvp').denodeify;
+var Promise = require('bluebird');
 var fs = require('graceful-fs');
 var ncp = require('ncp');
 var semverRegex = require('semver-regex');
@@ -13,9 +12,10 @@ var isWindows = process.platform.match(/^win/);
 
 // This is needed to support corner case where current directory has a `p4.*` (e.g. `p4.js`) file.
 // Windows cmd.exe will try to open that file instead of invoking p4.exe.
-var p4cmd = isWindows? 'p4.exe -c ' : 'p4 -c ';
-var execp = asp(exec);
-var ncpp = asp(ncp);
+var p4cmd = isWindows ? 'p4.exe -c ' : 'p4 -c ';
+var execp = Promise.promisify(exec);
+var ncpp = Promise.promisify(ncp);
+var rfp = Promise.promisify(fs.readFile);
 
 /**
 * Create a Perforce registry
@@ -45,6 +45,10 @@ P4Registry.configure = function configure(config, ui) {
         })
         .then(function (workspace) {
             config.workspace = workspace;
+            return ui.input('Name the version that points to the lastest change (get yourModule@{this} to easily get the latest change without applying p4 label)', config.devTag || 'dev');
+        })
+        .then(function (devTag) {
+            config.devTag = devTag;
             return config;
         });
 };
@@ -60,23 +64,58 @@ P4Registry.prototype = {
         var p4PackagePath = path.resolve(packagePath, '...');
 
         return execp(p4cmd + me.options.workspace + ' labels ' + p4PackagePath, me.execOptions)
-            .then(function (stdout, stderr) {
+            .then(function (response) {
+                var stdout = response[0];
+                var stderr = response[1];
                 if (stderr) {
                     throw stderr;
                 }
 
                 var lines = stdout.split('\n');
-                var versions = {};
-                for (var i = 0, len = lines.length; i < len; i++) {
-                    var line = lines[i];
-                    var version = semverRegex().exec(line);
-                    if (version) {
-                        versions[version] = {
-                            hash: crypto.createHash('sha1').update(packageName + line).digest('hex')
-                        };
+                return Promise.reduce(lines, function (versions, line) {
+                    // console.log(versions, line);
+                    if (!line) {
+                        return versions;
                     }
-                }
 
+                    var match = /Label (.*) \d/.exec(line);
+                    if (match && match[1]) {
+                        var version = match[1];
+
+                        return execp(p4cmd + me.options.workspace + ' changes -m 1 ...@' + version, me.execOptions)
+                            .then(function (response) {
+                                var stable = semverRegex().test(version);
+                                var changeLine = response[0];
+                                versions[version] = {
+                                    hash: crypto.createHash('sha1').update(packageName + changeLine).digest('hex')
+                                };
+
+                                if (!stable) {
+                                    versions[version].stable = false;
+                                }
+
+                                return versions;
+                            });
+                    }
+                    else {
+                        console.warn('unable to get label from: "' + line + '"');
+                        return versions;
+                    }
+                }, {});
+            })
+            .then(function (versions) {
+                return execp(p4cmd + me.options.workspace + ' changes -m 1 ...', me.execOptions)
+                    .then(function (response) {
+                        var changeLine = response[0];
+                        versions[me.options.devTag] = {
+                            hash: crypto.createHash('sha1').update(packageName + changeLine).digest('hex'),
+                            stable: false
+                        };
+                        return versions;
+                    });
+            })
+            .then(function (versions) {
+                // console.log(versions);
                 return { versions: versions };
             })
             .catch(function (err) {
@@ -93,20 +132,18 @@ P4Registry.prototype = {
         var me = this;
         var root = path.resolve(this.options.registryPath);
         var packagePath = path.resolve(root, packageName);
-        var p4PackagePath = path.resolve(packagePath, '...');
 
-        this.syncing = this.syncing || execp(p4cmd + me.options.workspace + ' sync -f ' + p4PackagePath + '@' + version, me.execOptions);
-        return this.syncing
-        	.then(function() {
-        		return ncpp(packagePath, dir, me.execOptions);
-        	})
+        return this.prepare(packagePath, version)
+            .then(function () {
+                return ncpp(packagePath, dir, me.execOptions);
+            })
             .then(function () {
                 return execp(isWindows ? 'attrib -R /S ' + dir + '\\*' : 'chmod -R +w ' + dir + '/*');
             })
             .then(function () {
                 var filepath = path.resolve(packagePath, 'package.json');
                 // console.log(filepath);
-                return asp(fs.readFile)(filepath);
+                return rfp(filepath);
 
             })
             .then(function (pjson) {
@@ -115,13 +152,34 @@ P4Registry.prototype = {
                 return pjson;
             });
     },
-    getPackageConfig: function(packageName, version, hash, meta) {
+    getPackageConfig: function (packageName, version, hash, meta) {
         // console.log('getPackageConfig', packageName, version, hash, meta);
-        var me = this;
         var root = path.resolve(this.options.registryPath);
         var packagePath = path.resolve(root, packageName);
-        var p4PackagePath = path.resolve(packagePath, '...');
 
+        return this.prepare(packagePath, version)
+            .then(function () {
+                var filepath = path.resolve(packagePath, 'package.json');
+                return rfp(filepath);
+
+            })
+            .then(function (pjson) {
+                pjson = JSON.parse(pjson.toString());
+                return pjson;
+            });
+    },
+    prepare: function(packagePath, version) {
+        if (this.preparing) {
+            return this.preparing;
+        }
+        
+        var me = this;
+        var p4PackagePath = path.resolve(packagePath, '...');
+        var syncCmd = p4cmd + me.options.workspace + ' sync -f ' + p4PackagePath;
+        if (version != this.options.devTag) {
+            syncCmd += '@' + version;
+        }
+        
         // Delete the package to avoid p4 unlink/chmod error during `sync -f` if the client has files that server don't. Messages are:
         // * unlink: {filePath}: The system cannot find the file specified.
         // * Fatal client error: disconnecting!
@@ -129,17 +187,9 @@ P4Registry.prototype = {
         //
         // Experience this myself once.
         // Only do it here and not on `download` as it would cause download twice.
-        del.sync([packagePath], { force: true });
-        this.syncing = execp(p4cmd + me.options.workspace + ' sync -f ' + p4PackagePath + '@' + version, me.execOptions);
-        return this.syncing
-            .then(function () {
-                var filepath = path.resolve(packagePath, 'package.json');
-                return asp(fs.readFile)(filepath);
-
-            })
-            .then(function (pjson) {
-                pjson = JSON.parse(pjson.toString());
-                return pjson;
-            });
+        return this.preparing = del([path.resolve(packagePath, '**')], { force: true })
+            .then(function() {
+                return execp(syncCmd, me.execOptions);
+            });        
     }
 };
