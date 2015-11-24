@@ -12,7 +12,7 @@ Create a workspace (P4CLIENT) that points to the root of your repository. For ex
 
 While you don't have to do a `p4 sync` on the registory, you do need to at least `mkdir jspm-registory` for p4 to work correctly.
 
-After you do that, you can then go to your project and do the following:
+After you do that, you can then go to your project and do the following (replacing `{myEndpoint}` and `{myModule}`):
 
 ````
 npm install jspm-p4
