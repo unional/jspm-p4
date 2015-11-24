@@ -17,7 +17,7 @@ After you do that, you can then go to your project and do the following:
 ````
 npm install jspm-p4
 jspm registry create {myEndpoint} jspm-p4
-jspm install {myEndpoint}:{myModule}  // To get latest module
+jspm install {myEndpoint}:{myModule}  // To get latest labeled/versioned module
 jspm install {myEndpoint}:{myModule}@x.y.z // To get specific verion
 jspm install {myEndpoint}:{myModule}@dev // To get the latest changes. **dev** is a special internal tag.
 ````
