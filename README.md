@@ -17,6 +17,9 @@ After you do that, you can then go to your project and do the following:
 ````
 npm install jspm-p4
 jspm registry create {myEndpoint} jspm-p4
+jspm install {myEndpoint}:{myModule}  // To get latest module
+jspm install {myEndpoint}:{myModule}@x.y.z // To get specific verion
+jspm install {myEndpoint}:{myModule}@dev // To get the latest changes. **dev** is a special internal tag.
 ````
 
 `jspm-p4` relies on `p4 labels` to manage versions. Similar to what you need to do on git/GitHub, when you have a module that is ready to publish, do the following:
@@ -26,6 +29,7 @@ jspm registry create {myEndpoint} jspm-p4
 	1. Do not tag on the `revision/changelist`, you will get only the modified files.
 
 To avoid unexpected behavior (*mess ups*), do not submit changes from multiple modules in the same revision. Check them in separately. That's the right thing to do anyway.
+
 
 # Design Direction
 * Perforce is a centralized VCS, and it works with a workspace concept. So to use it as a repository for jspm, I rely on checking out the repository locally.  It is the same approach as git-p4.
