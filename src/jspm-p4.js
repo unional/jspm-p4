@@ -67,7 +67,6 @@ P4Registry.prototype = {
             .then(function (stdout) {
                 var lines = stdout.split('\n');
                 return Promise.reduce(lines, function (versions, line) {
-                    // console.log(versions, line);
                     if (!line) {
                         return versions;
                     }
@@ -76,7 +75,7 @@ P4Registry.prototype = {
                     if (match && match[1]) {
                         var version = match[1];
 
-                        return execp(p4cmd + me.options.workspace + ' changes -m 1 ...@' + version, me.execOptions)
+                        return execp(p4cmd + me.options.workspace + ' changes -m 1 ' + p4PackagePath + '@' + version, me.execOptions)
                             .then(function (changeLine) {
                                 var stable = semverRegex().test(version);
                                 versions[version] = {
@@ -97,12 +96,14 @@ P4Registry.prototype = {
                 }, {});
             })
             .then(function (versions) {
-                return execp(p4cmd + me.options.workspace + ' changes -m 1 ...', me.execOptions)
+                return execp(p4cmd + me.options.workspace + ' changes -m 1 ' + p4PackagePath, me.execOptions)
                     .then(function (changeLine) {
                         versions[me.options.devTag] = {
                             hash: crypto.createHash('sha1').update(packageName + changeLine).digest('hex'),
                             stable: false
                         };
+
+                        // console.log('dev branch', changeLine, versions, me.execOptions);
                         return versions;
                     });
             })
