@@ -162,26 +162,26 @@ P4Registry.prototype = {
             });
     },
     prepare: function (packagePath, version) {
-        if (this.preparing) {
-            return this.preparing;
-        }
-
         var me = this;
-        var p4PackagePath = path.resolve(packagePath, '...');
-        var syncCmd = p4cmd + me.options.workspace + ' sync -f ' + p4PackagePath;
-        if (version != this.options.devTag) {
-            syncCmd += '@' + version;
-        }
 
-        // Delete the package to avoid p4 unlink/chmod error during `sync -f` if the client has files that server don't. Messages are:
-        // * unlink: {filePath}: The system cannot find the file specified.
-        // * Fatal client error: disconnecting!
-        // * chmod {filePath}: The system cannot find the file specified.
-        //
-        // Experience this myself once.
-        // Only do it here and not on `download` as it would cause download twice.
-        return this.preparing = del([path.resolve(packagePath, '**')], { force: true })
+        return this.preparing = (this.preparing || Promise.resolve())
             .then(function () {
+                // Delete the package to avoid p4 unlink/chmod error during `sync -f` if the client has files that server don't. Messages are:
+                // * unlink: {filePath}: The system cannot find the file specified.
+                // * Fatal client error: disconnecting!
+                // * chmod {filePath}: The system cannot find the file specified.
+                //
+                // Experience this myself once.
+                // Only do it here and not on `download` as it would cause download twice.
+                return del([path.resolve(packagePath, '**')], { force: true })
+            })
+            .then(function () {
+                var p4PackagePath = path.resolve(packagePath, '...');
+                var syncCmd = p4cmd + me.options.workspace + ' sync -f ' + p4PackagePath;
+                if (version != me.options.devTag) {
+                    syncCmd += '@' + version;
+                }
+
                 return execp(syncCmd, me.execOptions);
             });
     }
