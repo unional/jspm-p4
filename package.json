@@ -11,7 +11,7 @@
     "semver-regex": "^1.0.0"
   },
   "devDependencies": {
-    "eslint": "^3.11.1",
+    "eslint": "^4.1.0",
     "gulp": "^3.9.0",
     "gulp-eslint": "^3.0.1",
     "require-dir": "^0.3.0"
