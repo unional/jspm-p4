@@ -1,4 +1,6 @@
 # jspm-p4
+
+[![Greenkeeper badge](https://badges.greenkeeper.io/unional/jspm-p4.svg)](https://greenkeeper.io/)
 jspm registry endpoint for Perforce.
 
 ## What you need
