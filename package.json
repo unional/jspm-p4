@@ -12,9 +12,9 @@
   },
   "devDependencies": {
     "eslint": "8.26.0",
-    "gulp": "^3.9.0",
-    "gulp-eslint": "^4.0.0",
-    "require-dir": "^0.3.0"
+    "gulp": "3.9.1",
+    "gulp-eslint": "4.0.2",
+    "require-dir": "0.3.2"
   },
   "scripts": {},
   "repository": {
