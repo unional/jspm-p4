@@ -8,7 +8,7 @@
     "del": "^3.0.0",
     "graceful-fs": "^4.1.2",
     "ncp": "^2.0.0",
-    "semver-regex": "^1.0.0"
+    "semver-regex": "^4.0.0"
   },
   "devDependencies": {
     "eslint": "8.26.0",
