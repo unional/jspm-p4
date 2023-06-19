@@ -14,7 +14,7 @@
     "eslint": "8.26.0",
     "gulp": "^3.9.0",
     "gulp-eslint": "^4.0.0",
-    "require-dir": "^0.3.0"
+    "require-dir": "^1.0.0"
   },
   "scripts": {},
   "repository": {
